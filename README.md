@@ -47,38 +47,22 @@
 
 无需下载代码，无需手动安装环境，只需一台安装了 Docker 的服务器（Linux/Windows/Mac 均可）。
 
-**复制以下命令并在终端执行：**
+**1️⃣ 默认一键安装（推荐，面向公众）：**
+默认使用 8000 端口，从 GHCR 拉取最新镜像，并持久化数据到 `tgstate-data` 卷。
 
 ```bash
-# 1. (可选) 清理旧容器（如果是更新或重装）
-docker rm -f tgstate
+docker volume create tgstate-data >/dev/null 2>&1; docker rm -f tgstate 2>/dev/null || true; docker pull ghcr.io/buyi06/tgstate-python:latest && docker run -d --name tgstate --restart unless-stopped -p 8000:8000 -v tgstate-data:/app/data ghcr.io/buyi06/tgstate-python:latest
+```
 
-# 2. 拉取代码并构建镜像（使用 GitHub 最新代码）
-docker build -t tgstate https://github.com/buyi06/tgstate-python.git#main
+**2️⃣ 备用端口示例（当 8000 被占用时）：**
+如果您的 8000 端口不通或已被占用，可以使用以下命令改为 15767 端口：
 
-# 3. 启动容器
-# 默认端口为 8000，数据挂载到当前目录的 data 文件夹（可选）
-docker run -d \
-  --name tgstate \
-  --restart always \
-  -p 8000:8000 \
-  -v $(pwd)/data:/app/data \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/buyi06/tgstate-python:latest
+```bash
+docker volume create tgstate-data >/dev/null 2>&1; docker rm -f tgstate 2>/dev/null || true; docker pull ghcr.io/buyi06/tgstate-python:latest && docker run -d --name tgstate --restart unless-stopped -p 15767:8000 -v tgstate-data:/app/data ghcr.io/buyi06/tgstate-python:latest
 ```
 
 **✅ 部署成功后：**
-请在浏览器访问：`http://您的服务器IP:8000`
-
-> **💡 端口被占用？**
-> 如果 `8000` 端口已被其他程序占用，可以修改 `-p` 参数。例如改为 `15767` 端口：
-> `docker run -d --name tgstate --restart always -p 15767:8000 tgstate`
-> 此时访问地址变为：`http://您的服务器IP:15767`
-
-> **🔄 启用自动更新：**
-> 为了使用 **Settings** 页面中的 **“自动更新”** 功能，**必须**挂载 `-v /var/run/docker.sock:/var/run/docker.sock`。
-> 该功能使用 Watchtower 自动拉取最新镜像并重启容器（仅更新 tgstate 本身）。
-> 您的数据存储在 `/app/data`（即宿主机 `$(pwd)/data`），更新过程**不会丢失数据**。
+请在浏览器访问：`http://您的服务器IP:8000` （或您设置的备用端口）
 
 ---
 

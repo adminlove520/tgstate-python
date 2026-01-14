@@ -69,32 +69,7 @@
         </div>
 
         <!-- 维护更新 -->
-        <div class="card">
-            <h2 style="font-size: 16px; font-weight: 600; margin-bottom: 24px; display: flex; align-items: center; gap: 8px;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path></svg>
-                维护更新
-            </h2>
-            
-            <div class="flex-between" style="align-items: flex-start;">
-                <div>
-                    <label class="input-label" style="margin-bottom: 4px;">自动更新</label>
-                    <div class="text-sm text-muted">开启后将自动拉取最新镜像并升级（不会丢失数据）。</div>
-                    <div class="text-sm text-muted" id="auto-update-status-text" style="margin-top: 4px; display: none;">
-                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); margin-right: 6px;"></span>
-                        当前状态：未开启
-                    </div>
-                </div>
-                
-                <label class="switch">
-                    <input type="checkbox" id="auto-update-toggle" onchange="toggleAutoUpdate(this)">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            
-            <div id="docker-unavailable-msg" class="hidden" style="margin-top: 12px; padding: 12px; background: var(--bg-surface-hover); border-radius: var(--radius-md); font-size: 13px; color: var(--text-secondary);">
-                ⚠️ 当前部署环境未挂载 docker.sock，无法启用自动更新能力。
-            </div>
-        </div>
+        <!-- 自动更新功能已移除，此处保留空位以便未来扩展 -->
 
         <!-- 高级与保存 -->
         <div class="flex-between" style="margin-bottom: 32px;">
