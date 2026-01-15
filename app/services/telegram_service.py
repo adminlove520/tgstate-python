@@ -45,9 +45,10 @@ class TelegramService:
             logger.error("上传分块 %s 到 Telegram 时出错: %s", chunk_name, e)
         return None
 
-    async def _upload_as_chunks(self, file_path: str, original_filename: str) -> str | None:
+    async def _upload_as_chunks(self, file_path: str, original_filename: str) -> tuple[str, str] | None:
         """
         将大文件分割成块，并通过回复链将所有部分聚合起来。
+        返回: (short_id, composite_file_id)
         """
         chunk_file_ids = []
         first_message_id = None
@@ -111,13 +112,13 @@ class TelegramService:
                     file_id=composite_id, # 我们存储复合ID
                     filesize=total_size
                 )
-                return short_id # 返回 short_id
+                return short_id, composite_id # 返回 short_id 和 composite_id
         except Exception as e:
             logger.error("上传清单文件时出错: %s", e)
         
         return None
 
-    async def upload_file(self, file_path: str, file_name: str) -> str | None:
+    async def upload_file(self, file_path: str, file_name: str) -> tuple[str, str] | None:
         """
         将文件上传到指定的 Telegram 频道。
         如果文件大小大于等于 CHUNK_SIZE_BYTES (约 19.5MB)，则使用分块 + manifest 机制上传。
@@ -127,7 +128,7 @@ class TelegramService:
             file_name: 文件名。
 
         返回:
-            如果成功，则返回文件的 short_id，否则返回 None。
+            如果成功，则返回 (short_id, composite_file_id)，否则返回 None。
         """
         if not self.channel_name:
             logger.error("环境变量中未设置 CHANNEL_NAME")
@@ -168,7 +169,7 @@ class TelegramService:
                     file_id=composite_id, # 存储复合ID
                     filesize=file_size
                 )
-                return short_id # 返回 short_id
+                return short_id, composite_id # 返回 short_id 和 composite_id
         except Exception as e:
             logger.error("上传文件到 Telegram 时出错: %s", e)
         

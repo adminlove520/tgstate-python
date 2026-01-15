@@ -11,6 +11,9 @@ DATABASE_URL = os.path.join(DATA_DIR, "file_metadata.db")
 
 logger = logging.getLogger(__name__)
 
+import time
+from .core.security import get_password_hash
+
 # 使用线程锁来确保多线程环境下的数据库访问安全
 db_lock = threading.Lock()
 
@@ -41,39 +44,138 @@ def init_db() -> None:
                 );
             """)
             
-            # 检查 short_id 列是否存在，不存在则添加 (简单的 migration)
+            # 检查 short_id 列是否存在
             cursor.execute("PRAGMA table_info(files)")
             columns = [info[1] for info in cursor.fetchall()]
             if "short_id" not in columns:
                 logger.info("Migrating database: adding short_id column...")
                 try:
-                    # SQLite 不支持在 ADD COLUMN 时直接指定 UNIQUE，需拆分为两步
                     cursor.execute("ALTER TABLE files ADD COLUMN short_id TEXT")
                 except Exception as e:
                     logger.error("Migration warning: Failed to add short_id column: %s", e)
 
-            # 确保唯一索引存在（幂等操作）
+            # 确保唯一索引存在
             try:
                 cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_files_short_id ON files(short_id)")
             except Exception as e:
                 logger.error("Migration warning: Failed to create index idx_files_short_id: %s", e)
             
+            # app_settings 表结构更新
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS app_settings (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     bot_token TEXT,
                     channel_name TEXT,
-                    pass_word TEXT,
+                    pass_word TEXT, -- 废弃，保留用于迁移
+                    pass_hash TEXT, -- 新增，存储哈希
                     picgo_api_key TEXT,
                     base_url TEXT
                 );
             """)
+            
+            # 检查 pass_hash 列是否存在
+            cursor.execute("PRAGMA table_info(app_settings)")
+            settings_columns = [info[1] for info in cursor.fetchall()]
+            if "pass_hash" not in settings_columns:
+                logger.info("Migrating database: adding pass_hash column...")
+                try:
+                    cursor.execute("ALTER TABLE app_settings ADD COLUMN pass_hash TEXT")
+                except Exception as e:
+                    logger.error("Migration warning: Failed to add pass_hash column: %s", e)
+
+            # Session 表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    ip TEXT,
+                    user_agent TEXT
+                );
+            """)
+
             # 确保存在单行设置记录
             cursor.execute("INSERT OR IGNORE INTO app_settings (id) VALUES (1)")
+            
+            # 密码迁移逻辑：如果存在明文 pass_word 且不存在 pass_hash，则迁移
+            cursor.execute("SELECT pass_word, pass_hash FROM app_settings WHERE id = 1")
+            row = cursor.fetchone()
+            if row:
+                old_pass = row["pass_word"]
+                curr_hash = row["pass_hash"]
+                if old_pass and not curr_hash:
+                    logger.info("Migrating plain password to hash...")
+                    new_hash = get_password_hash(old_pass)
+                    cursor.execute("UPDATE app_settings SET pass_hash = ?, pass_word = NULL WHERE id = 1", (new_hash,))
+                    logger.info("Password migration completed.")
+
             conn.commit()
             logger.info("数据库已成功初始化")
         finally:
             conn.close()
+
+# --- Session Management ---
+
+def create_session(session_id: str, expires_at: int, ip: str = None, ua: str = None) -> None:
+    """创建新的 Session。"""
+    with db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            created_at = int(time.time())
+            cursor.execute(
+                "INSERT INTO sessions (session_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?)",
+                (session_id, created_at, expires_at, ip, ua)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+def get_session(session_id: str) -> dict | None:
+    """获取 Session 信息，并检查是否过期。"""
+    with db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            # 检查过期
+            if row["expires_at"] < int(time.time()):
+                # 懒惰删除
+                cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+                conn.commit()
+                return None
+                
+            return dict(row)
+        finally:
+            conn.close()
+
+def delete_session(session_id: str) -> None:
+    """删除 Session。"""
+    with db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+def clear_all_sessions() -> None:
+    """清空所有 Session（用于修改密码或重置配置时）。"""
+    with db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM sessions")
+            conn.commit()
+        finally:
+            conn.close()
+
+# --- End Session Management ---
 
 def add_file_metadata(filename: str, file_id: str, filesize: int) -> str:
     """
@@ -203,16 +305,17 @@ def get_app_settings_from_db() -> dict:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT bot_token, channel_name, pass_word, picgo_api_key, base_url FROM app_settings WHERE id = 1")
+            cursor.execute("SELECT bot_token, channel_name, pass_word, pass_hash, picgo_api_key, base_url FROM app_settings WHERE id = 1")
             row = cursor.fetchone()
             if not row:
                 return {}
             return {
                 "BOT_TOKEN": row[0],
                 "CHANNEL_NAME": row[1],
-                "PASS_WORD": row[2],
-                "PICGO_API_KEY": row[3],
-                "BASE_URL": row[4],
+                "PASS_WORD": row[2], # 保留以兼容旧代码读取，但主要逻辑应使用 pass_hash
+                "PASS_HASH": row[3],
+                "PICGO_API_KEY": row[4],
+                "BASE_URL": row[5],
             }
         finally:
             conn.close()
@@ -234,13 +337,14 @@ def save_app_settings_to_db(payload: dict) -> None:
             cursor.execute(
                 """
                 UPDATE app_settings
-                SET bot_token = ?, channel_name = ?, pass_word = ?, picgo_api_key = ?, base_url = ?
+                SET bot_token = ?, channel_name = ?, pass_word = ?, pass_hash = ?, picgo_api_key = ?, base_url = ?
                 WHERE id = 1
                 """,
                 (
                     norm(payload.get("BOT_TOKEN")),
                     norm(payload.get("CHANNEL_NAME")),
                     norm(payload.get("PASS_WORD")),
+                    norm(payload.get("PASS_HASH")),
                     norm(payload.get("PICGO_API_KEY")),
                     norm(payload.get("BASE_URL")),
                 )
@@ -256,6 +360,7 @@ def reset_app_settings_in_db() -> None:
             "BOT_TOKEN": None,
             "CHANNEL_NAME": None,
             "PASS_WORD": None,
+            "PASS_HASH": None,
             "PICGO_API_KEY": None,
             "BASE_URL": None,
         }

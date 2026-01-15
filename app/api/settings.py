@@ -44,6 +44,8 @@ def _validate_config(cfg: dict) -> None:
         raise http_error(400, "BASE_URL 必须以 http:// 或 https:// 开头", code="invalid_base_url")
 
 
+from ..core.security import get_password_hash
+
 @router.get("/api/app-config")
 async def get_app_config(request: Request):
     cfg = get_app_settings()
@@ -53,7 +55,8 @@ async def get_app_config(request: Request):
         "cfg": {
             "BOT_TOKEN_SET": bool((cfg.get("BOT_TOKEN") or "").strip()),
             "CHANNEL_NAME": cfg.get("CHANNEL_NAME") or "",
-            "PASS_WORD_SET": bool((cfg.get("PASS_WORD") or "").strip()),
+            # 不再返回明文密码，只返回是否已设置
+            "PASS_WORD_SET": bool((cfg.get("PASS_HASH") or cfg.get("PASS_WORD") or "").strip()),
             "BASE_URL": cfg.get("BASE_URL") or "",
             "PICGO_API_KEY_SET": bool((cfg.get("PICGO_API_KEY") or "").strip()),
         },
@@ -64,43 +67,31 @@ async def get_app_config(request: Request):
         },
     }
 
-
-def _merge_config(existing: dict, incoming: dict) -> dict:
-    merged = dict(existing)
-    for k, v in incoming.items():
-        if v is None:
-            continue
-        if isinstance(v, str):
-            # 允许保存空字符串（用于清空配置）
-            merged[k] = v.strip()
-        else:
-            merged[k] = v
-    return merged
-
-
-@router.post("/api/app-config/save")
-async def save_config_only(payload: AppConfigRequest, request: Request):
-    existing = database.get_app_settings_from_db()
-    incoming = payload.model_dump()
-    merged = _merge_config(existing, incoming)
-
-    # Partial validation is implicit in _validate_config (it skips empty values)
-    _validate_config(merged)
-    database.save_app_settings_to_db(merged)
-    logger.info("配置已保存（未应用）")
-    return {"status": "ok", "message": "已保存（未应用）"}
-
+# ... (skip save_config_only)
 
 @router.post("/api/app-config/apply")
 async def save_and_apply(payload: AppConfigRequest, request: Request):
     existing = database.get_app_settings_from_db()
     incoming = payload.model_dump()
+    
+    # 特殊处理密码：如果传入了密码，需要 hash 后保存
+    raw_password = incoming.get("PASS_WORD")
+    if raw_password:
+        incoming["PASS_HASH"] = get_password_hash(raw_password)
+        incoming["PASS_WORD"] = None # 清除明文
+    elif raw_password == "":
+        # 空字符串表示清除密码
+        incoming["PASS_HASH"] = None
+        incoming["PASS_WORD"] = None
+    else:
+        # None 表示不修改，保留原样
+        del incoming["PASS_WORD"]
+
     merged = _merge_config(existing, incoming)
     _validate_config(merged)
     database.save_app_settings_to_db(merged)
 
     # 只有当 BOT_TOKEN 和 CHANNEL_NAME 都存在时才尝试启动 Bot
-    # 但 Web 设置无论如何都会保存生效
     await apply_runtime_settings(request.app, start_bot=True)
     logger.info("配置已保存并应用")
 
@@ -116,12 +107,11 @@ async def save_and_apply(payload: AppConfigRequest, request: Request):
         },
     )
     
-    pwd = (merged.get("PASS_WORD") or "").strip()
-    if pwd:
-        # 修改密码或保存配置时，如果涉及密码变更，更新 Cookie
-        # 统一使用 tgstate_session 名称
-        resp.set_cookie(key="tgstate_session", value=pwd, httponly=True, samesite="Lax", path="/")
-    else:
+    # 如果修改了配置（特别是密码），清空所有 Session 强制重新登录
+    # 或者如果只是更新了配置没改密码，也可以选择保留 Session。
+    # 为了安全起见，这里选择清空 Session，要求重新登录
+    if raw_password is not None: # 只要提交了密码字段（无论是修改还是清空）
+        database.clear_all_sessions()
         resp.delete_cookie("tgstate_session", path="/", httponly=True, samesite="Lax")
         
     return resp
@@ -130,6 +120,7 @@ async def save_and_apply(payload: AppConfigRequest, request: Request):
 @router.post("/api/reset-config")
 async def reset_config(request: Request):
     database.reset_app_settings_in_db()
+    database.clear_all_sessions() # 全员下线
     await apply_runtime_settings(request.app, start_bot=True)
     logger.warning("配置已重置")
     resp = JSONResponse(status_code=200, content={"status": "ok", "message": "配置已重置"})
@@ -142,7 +133,19 @@ async def set_password(payload: PasswordRequest, request: Request):
     try:
         current = get_app_settings()
         pwd = (payload.password or "").strip()
-        database.save_app_settings_to_db({**current, "PASS_WORD": pwd})
+        
+        # 增加 IP 限速
+        client_ip = request.client.host if request.client else "unknown"
+        from .auth import is_rate_limited, add_attempt
+        if is_rate_limited(client_ip):
+             return JSONResponse(status_code=429, content={"status": "error", "message": "尝试次数过多"})
+        
+        # Hash Password
+        pass_hash = get_password_hash(pwd)
+        
+        database.save_app_settings_to_db({**current, "PASS_WORD": None, "PASS_HASH": pass_hash})
+        database.clear_all_sessions() # 修改密码后全员下线
+        
         await apply_runtime_settings(request.app, start_bot=False)
         logger.info("密码已更新")
         return {"status": "ok", "message": "密码已成功设置。"}

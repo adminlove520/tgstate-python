@@ -9,8 +9,9 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from .core.http_client import lifespan
 from .api import routes as api_routes
 from .pages import router as pages_router
-from .core.config import get_active_password
+from .core.config import get_active_password, get_app_settings
 from .api.common import error_payload
+from . import database
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -28,11 +29,34 @@ app = FastAPI(
 COOKIE_NAME = "tgstate_session"
 
 @app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """
+    Add security headers to all responses.
+    """
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    
+    # 简单的 Permissions-Policy
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+    
+    # Strict-Transport-Security (HSTS)
+    # Only if HTTPS
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+    return response
+
+@app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """
     一个全局中间件，用于处理所有页面的访问权限。
     """
-    active_password = get_active_password()
+    # 检查是否设置了密码（Hash 或 Plain）
+    settings = get_app_settings()
+    has_password = bool((settings.get("PASS_HASH") or settings.get("PASS_WORD") or "").strip())
+    
     request_path = request.url.path
 
     # 定义公共路径，这些路径永远不拦截
@@ -41,7 +65,7 @@ async def auth_middleware(request: Request, call_next):
     is_public = any(request_path.startswith(p) for p in public_paths)
 
     # 情况 1：未设置密码
-    if not active_password:
+    if not has_password:
         # 如果是引导页或 API/静态资源，放行
         if request_path == "/welcome" or request_path == "/settings" or is_public:
             return await call_next(request)
@@ -52,6 +76,17 @@ async def auth_middleware(request: Request, call_next):
     # 如果访问引导页，强制跳转到主页
     if request_path == "/welcome":
         return RedirectResponse(url="/", status_code=307)
+
+    # --- 鉴权逻辑 ---
+    
+    # 检查 Session
+    session_id = request.cookies.get(COOKIE_NAME)
+    is_authenticated = False
+    
+    if session_id:
+        session = database.get_session(session_id)
+        if session:
+            is_authenticated = True
 
     # 保护 API
     # 包含了上传、删除、文件列表、配置管理等敏感接口
@@ -66,8 +101,7 @@ async def auth_middleware(request: Request, call_next):
     )
     
     if any(request_path.startswith(prefix) for prefix in protected_api_prefixes):
-        session_password = request.cookies.get(COOKIE_NAME)
-        if session_password != active_password:
+        if not is_authenticated:
             return JSONResponse(
                 status_code=401,
                 content={"detail": error_payload("需要网页登录", code="login_required")},
@@ -79,16 +113,14 @@ async def auth_middleware(request: Request, call_next):
     
     # 登录页特殊处理：如果已登录，跳转到主页
     if request_path == "/login" or request_path == "/pwd":
-        session_password = request.cookies.get(COOKIE_NAME)
-        if session_password == active_password:
+        if is_authenticated:
             return RedirectResponse(url="/", status_code=307)
         # 未登录则允许访问登录页
         return await call_next(request)
 
     # 核心页面鉴权
     if request_path in protected_pages:
-        session_password = request.cookies.get(COOKIE_NAME)
-        if session_password != active_password:
+        if not is_authenticated:
             return RedirectResponse(url="/login", status_code=307)
 
     return await call_next(request)

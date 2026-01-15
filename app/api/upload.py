@@ -42,7 +42,13 @@ async def upload_file(
             shutil.copyfileobj(file.file, temp_file)
 
         telegram_service = get_telegram_service()
-        file_id = await telegram_service.upload_file(temp_file_path, file.filename)
+        result = await telegram_service.upload_file(temp_file_path, file.filename)
+        
+        if result:
+            short_id, composite_file_id = result
+        else:
+            short_id, composite_file_id = None, None
+            
     except Exception as e:
         logger.error("上传失败: %s: %s", file.filename, e)
         raise http_error(500, "文件上传失败。", code="upload_failed", details=str(e))
@@ -53,23 +59,23 @@ async def upload_file(
             except OSError:
                 pass
 
-    if not file_id:
+    if not short_id:
         logger.error("上传失败（未返回 file_id）: %s", file.filename)
         raise http_error(500, "文件上传失败。", code="upload_failed")
 
     # 构造短链 URL: /d/{short_id}
     # 这里的 file_id 实际上是 short_id
-    file_path = f"/d/{file_id}"
+    file_path = f"/d/{short_id}"
     
     # 始终返回相对路径，前端负责拼接 origin
     full_url = file_path
 
-    logger.info("上传成功: %s -> %s", file.filename, file_id)
+    logger.info("上传成功: %s -> %s", file.filename, short_id)
     return {
-        "file_id": file_id,          # 这里的 file_id 是用于分享的 ID (即 short_id)
-        "short_id": file_id,         # 兼容旧字段
-        "download_path": file_path,  # 用户要求的字段
-        "path": file_path,           # 兼容旧字段
-        "url": str(full_url)         # 兼容旧字段
+        "file_id": composite_file_id, # 真实的 file_id (message_id:file_id)，用于删除操作
+        "short_id": short_id,         # 短 ID
+        "download_path": file_path,   # 用户要求的字段 /d/short_id
+        "path": file_path,            # 兼容旧字段
+        "url": str(full_url)          # 兼容旧字段
     }
 
