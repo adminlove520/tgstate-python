@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://127.0.0.1:8000"
     MODE: str = "p" # p 代表公开模式, m 代表私有模式
     FILE_ROUTE: str = "/d/"
+    HTTPS_PROXY: Optional[str] = None
+    HTTP_PROXY: Optional[str] = None
 
 
 @lru_cache()
@@ -61,4 +63,6 @@ def get_app_settings() -> dict:
         "PASS_WORD": (db_settings.get("PASS_WORD") or env.PASS_WORD),
         "PICGO_API_KEY": (db_settings.get("PICGO_API_KEY") or env.PICGO_API_KEY),
         "BASE_URL": (db_settings.get("BASE_URL") or env.BASE_URL),
+        "HTTPS_PROXY": (db_settings.get("HTTPS_PROXY") or env.HTTPS_PROXY),
+        "HTTP_PROXY": (db_settings.get("HTTP_PROXY") or env.HTTP_PROXY),
     }

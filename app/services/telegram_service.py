@@ -22,11 +22,23 @@ class TelegramService:
     """
     def __init__(self, bot_token: str, channel_name: str):
         # 为大文件上传设置更长的超时时间 (例如 5 分钟)
-        request = HTTPXRequest(
-            connect_timeout=300.0,
-            read_timeout=300.0,
-            write_timeout=300.0
-        )
+        # 获取代理设置
+        settings = get_app_settings()
+        proxy_url = settings.get("HTTPS_PROXY") or settings.get("HTTP_PROXY")
+
+        # 为大文件上传设置更长的超时时间 (例如 5 分钟)
+        request_kwargs = {
+            "connect_timeout": 300.0,
+            "read_timeout": 300.0,
+            "write_timeout": 300.0,
+        }
+        
+        # 如果有代理，显式传递给 HTTPXRequest
+        # 注意: python-telegram-bot 的 HTTPXRequest 可能需要 proxy_url 参数
+        if proxy_url:
+            request_kwargs["proxy_url"] = proxy_url
+
+        request = HTTPXRequest(**request_kwargs)
         self.bot = telegram.Bot(token=bot_token, request=request)
         self.channel_name = channel_name
 
