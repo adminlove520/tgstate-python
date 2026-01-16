@@ -96,6 +96,11 @@ async def serve_file(
         # Here we just fetch head.
         
         # Optimization: We need to know if it's manifest.
+        # Note: If it's a HEAD request from client, we still might need to fetch a bit from TG to know if it's manifest.
+        # But if we just want to return headers for a simple file, maybe we can skip?
+        # No, because if it's manifest, content-type and size are different (manifest is text, real file is binary).
+        # So we MUST fetch head from TG even for HEAD request.
+        
         head_resp = await client.get(download_url, headers={"Range": "bytes=0-127"})
         head_resp.raise_for_status()
         first_bytes = head_resp.content
@@ -118,6 +123,10 @@ async def serve_file(
         # Force attachment for split files usually, but respect user preference if previewable (e.g. large video?)
         # For now, let's keep basic logic. Streaming split files with Range is hard.
         # We will serve it sequentially without Range support for now.
+        
+        if request.method == "HEAD":
+             return Response(status_code=200, headers=common_headers)
+
         return StreamingResponse(
             stream_chunks(chunk_file_ids, telegram_service, client), 
             headers=common_headers
@@ -126,10 +135,6 @@ async def serve_file(
     # Standard Single File
     
     # Get total size for Range
-    # We can try HEAD request to TG, but TG presigned URLs sometimes don't support HEAD or return correct Content-Length.
-    # We rely on what we can get.
-    # Note: Telegram file paths are usually direct to file storage, supporting Range.
-    
     async def get_remote_file_size():
         # Try HEAD
         try:
@@ -142,6 +147,7 @@ async def serve_file(
 
     file_size = await get_remote_file_size()
 
+    # Handle Range (Only for GET)
     if range_header and file_size and request.method != "HEAD":
         # Parse Range: bytes=0-1024
         try:
