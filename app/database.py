@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import string
 import random
+from typing import Optional
 
 DATA_DIR = os.getenv("DATA_DIR", "app/data")
 os.makedirs(DATA_DIR, exist_ok=True)

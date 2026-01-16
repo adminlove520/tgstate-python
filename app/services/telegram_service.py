@@ -3,6 +3,7 @@ import io
 import logging
 import os
 from functools import lru_cache
+from typing import Optional
 
 import telegram
 from telegram.request import HTTPXRequest
