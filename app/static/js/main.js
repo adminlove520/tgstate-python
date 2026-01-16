@@ -5,26 +5,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressArea = document.getElementById('prog-zone');
     const doneArea = document.getElementById('done-zone');
     const searchInput = document.getElementById('file-search');
-    
+
     // --- Copy Link Delegation ---
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('.copy-link-btn');
         if (!btn) return;
-        
+
         // Prevent default if it's a link (though it's a button)
         e.preventDefault();
         e.stopPropagation();
 
         const item = btn.closest('.file-item, .image-card');
         if (!item) return; // Should exist
-        
+
         // 如果按钮上有 onclick 属性（旧代码或特殊情况），优先执行 onclick，这里不处理
         if (btn.hasAttribute('onclick')) return;
 
         const shortId = item.dataset.shortId;
         const fileId = item.dataset.fileId;
         const filename = item.dataset.filename;
-        
+
         // 核心策略：优先从 DOM 中获取真实可用的绝对 URL
         let url = '';
 
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (downloadLink && downloadLink.href) {
             url = downloadLink.href;
         }
-        
+
         // 2. 尝试获取图片的 src (图床模式)
         if (!url) {
             const img = item.querySelector('img[src^="/d/"]');
@@ -54,24 +54,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        
+
         // 4. Final Fallback: 构造 /d/{id}
         if (!url || url.includes('undefined')) {
-             const id = (shortId && shortId !== 'None' && shortId !== '') ? shortId : fileId;
-             url = window.location.origin + `/d/${id}`;
+            const id = (shortId && shortId !== 'None' && shortId !== '') ? shortId : fileId;
+            url = window.location.origin + `/d/${id}`;
         }
-        
+
         // 安全检查：如果最终结果包含 undefined，强制重构
         if (url.includes('undefined')) {
             // 最后的兜底，哪怕 fileId 也是 undefined (极低概率)，也比 http://...undefined 好
-             console.warn('Constructed URL contained undefined, falling back to raw fileId');
-             url = window.location.origin + '/d/' + (fileId || 'error');
+            console.warn('Constructed URL contained undefined, falling back to raw fileId');
+            url = window.location.origin + '/d/' + (fileId || 'error');
         }
 
         if (window.copyLink) {
-             Utils.copy(url);
+            Utils.copy(url);
         } else {
-             Utils.copy(url);
+            Utils.copy(url);
         }
     });
 
@@ -94,31 +94,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Upload Logic ---
     if (uploadArea && fileInput) {
-        // Prevent double dialog by stopping propagation from input
-        fileInput.addEventListener('click', (e) => e.stopPropagation());
+        // Simplified Upload Logic: The file input now covers the entire zone (overlay)
+        // so we don't need manual click delegation.
 
-        uploadArea.addEventListener('click', (e) => {
-             // Only trigger if not clicking the input itself (though propagation stop handles it, this is extra safety)
-             if (e.target !== fileInput) {
-                 fileInput.click();
-             }
-        });
-
-        uploadArea.addEventListener('dragover', (event) => {
-            event.preventDefault();
+        // Visual feedback for drag and drop
+        // Events are fired on the input because it's on top
+        fileInput.addEventListener('dragenter', () => {
             uploadArea.style.borderColor = 'var(--primary-color)';
             uploadArea.style.backgroundColor = 'var(--bg-surface-hover)';
         });
 
-        uploadArea.addEventListener('dragleave', () => {
+        fileInput.addEventListener('dragover', (event) => {
+            event.preventDefault(); // Necessary to allow dropping
+            uploadArea.style.borderColor = 'var(--primary-color)';
+            uploadArea.style.backgroundColor = 'var(--bg-surface-hover)';
+        });
+
+        fileInput.addEventListener('dragleave', () => {
             uploadArea.style.borderColor = '';
             uploadArea.style.backgroundColor = '';
         });
 
-        uploadArea.addEventListener('drop', (event) => {
+        fileInput.addEventListener('drop', (event) => {
             event.preventDefault();
             uploadArea.style.borderColor = '';
             uploadArea.style.backgroundColor = '';
+
             const files = event.dataTransfer.files;
             if (files.length > 0) {
                 handleFiles(files);
@@ -128,6 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput.addEventListener('change', ({ target }) => {
             if (target.files.length > 0) {
                 handleFiles(target.files);
+                // Clear value to allow re-uploading same file if needed
+                target.value = '';
             }
         });
     }
@@ -137,8 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let isUploading = false;
 
     function handleFiles(files) {
-        if (progressArea) progressArea.innerHTML = ''; 
-        
+        if (progressArea) progressArea.innerHTML = '';
+
         for (const file of files) {
             uploadQueue.push(file);
         }
@@ -147,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function processQueue() {
         if (isUploading || uploadQueue.length === 0) return;
-        
+
         isUploading = true;
         const file = uploadQueue.shift();
         uploadFile(file).then(() => {
@@ -160,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Promise((resolve) => {
             const formData = new FormData();
             formData.append('file', file, file.name);
-            
+
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/upload', true);
             const fileId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -177,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="progress-bar" style="width: 0%; height: 100%; background: var(--primary-color); transition: width 0.2s;"></div>
                     </div>
                 </div>`;
-            
+
             if (progressArea) progressArea.insertAdjacentHTML('beforeend', progressHTML);
             const progressEl = document.querySelector(`#progress-${fileId} .progress-bar`);
             const percentEl = document.querySelector(`#progress-${fileId} .percent`);
@@ -195,10 +198,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (xhr.status === 200) {
                     const response = JSON.parse(xhr.responseText);
                     const fileUrl = response.url;
-                    
+
                     // Success Toast
                     if (window.Toast) Toast.show(`${file.name} 上传成功`);
-                    
+
                     // Add to done area
                     const successHTML = `
                         <div class="card" style="padding: 16px; margin-bottom: 12px; border-left: 4px solid var(--success-color);">
@@ -223,8 +226,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else if (parsed && parsed.message) {
                             errorMsg = parsed.message;
                         }
-                    } catch (e) {}
-                    
+                    } catch (e) { }
+
                     if (window.Toast) Toast.show(errorMsg, 'error');
                 }
                 resolve();
@@ -253,9 +256,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const checkboxes = document.querySelectorAll('.file-checkbox');
         const checked = document.querySelectorAll('.file-checkbox:checked');
         const count = checked.length;
-        
+
         if (selectionCounter) selectionCounter.textContent = count > 0 ? `${count} 项已选` : '0 项已选';
-        
+
         if (batchActionsBar) {
             if (count > 0) {
                 batchActionsBar.classList.remove('hidden');
@@ -301,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const activeFormatBtn = document.querySelector('.format-option.active');
             const format = activeFormatBtn ? activeFormatBtn.dataset.format : 'url';
-            
+
             const links = Array.from(checked).map(cb => {
                 const item = cb.closest('.file-item, .image-card');
                 let url = '';
@@ -311,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (downloadLink && downloadLink.href) {
                     url = downloadLink.href;
                 }
-                
+
                 // 2. 尝试获取图片 src
                 if (!url) {
                     const img = item.querySelector('img[src^="/d/"]');
@@ -319,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         url = img.src;
                     }
                 }
-                
+
                 // 3. Fallback: Dataset
                 if (!url) {
                     const dsUrl = item.dataset.fileUrl;
@@ -330,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
-                
+
                 // 4. Final Fallback
                 if (!url || url.includes('undefined')) {
                     const shortId = item.dataset.shortId;
@@ -338,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const id = (shortId && shortId !== 'None' && shortId !== '') ? shortId : fileId;
                     url = window.location.origin + `/d/${id}`;
                 }
-                
+
                 const name = item.dataset.filename;
 
                 if (format === 'markdown') return `![${name}](${url})`;
@@ -360,23 +363,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!confirmed) return;
 
             const fileIds = Array.from(checked).map(cb => cb.dataset.fileId);
-            
+
             fetch('/api/batch_delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ file_ids: fileIds })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.deleted) {
-                    data.deleted.forEach(item => {
-                         const id = item.details?.file_id || item; 
-                         removeFileElement(id);
-                    });
-                    if (window.Toast) Toast.show(`已删除 ${data.deleted.length} 个文件`);
-                }
-                updateBatchControls();
-            });
+                .then(res => res.json())
+                .then(data => {
+                    if (data.deleted) {
+                        data.deleted.forEach(item => {
+                            const id = item.details?.file_id || item;
+                            removeFileElement(id);
+                        });
+                        if (window.Toast) Toast.show(`已删除 ${data.deleted.length} 个文件`);
+                    }
+                    updateBatchControls();
+                });
         });
     }
 
@@ -403,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             eventSource.onerror = () => {
-                try { eventSource.close(); } catch (_) {}
+                try { eventSource.close(); } catch (_) { }
                 setTimeout(connectSSE, 5000);
             };
         };
@@ -422,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function addNewFileElement(file) {
         const isGridView = document.querySelector('.image-grid') !== null;
         const container = document.getElementById('file-list-disk');
-        
+
         // Remove empty state if exists
         const emptyState = container.querySelector('div[style*="text-align: center"]');
         if (emptyState) emptyState.remove();
@@ -430,14 +433,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const formattedSize = (file.filesize / (1024 * 1024)).toFixed(2) + " MB";
         const formattedDate = formatDateValue(file.upload_date);
         const safeId = file.file_id.replace(':', '-');
-        
+
         // URL construction: Always use /d/{file_id} (short_id preferred)
         // 回滚：只使用 /d/{id} 格式，不再拼接文件名或 slug
         let fileUrl = `/d/${file.short_id || file.file_id}`;
 
         let html = '';
         if (isGridView) {
-             html = `
+            html = `
                 <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}">
                     <div style="position: relative; aspect-ratio: 16/9; background: #000;">
                         <img src="${fileUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain;" alt="${file.filename}">
@@ -494,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch(`/api/files/${fileId}`, { method: 'DELETE' })
             .then(async (res) => {
                 let data = null;
-                try { data = await res.json(); } catch (e) {}
+                try { data = await res.json(); } catch (e) { }
                 return { ok: res.ok, data };
             })
             .then(({ ok, data }) => {
@@ -512,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function removeFileElement(fileId) {
         const el = document.getElementById(`file-item-${fileId.replace(':', '-')}`);
         if (el) el.remove();
-        
+
         // Check if empty
         const container = document.getElementById('file-list-disk');
         if (container && container.children.length === 0) {
@@ -520,12 +523,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Simple text fallback
             const isGridView = document.querySelector('.image-grid') !== null;
             if (isGridView) {
-                 container.innerHTML = `
+                container.innerHTML = `
                     <div style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--text-tertiary);">
                         <p>暂无图片</p>
                     </div>`;
             } else {
-                 container.innerHTML = `
+                container.innerHTML = `
                     <tr>
                         <td colspan="5" style="padding: 48px; text-align: center;">
                             <div class="text-muted">暂无文件</div>

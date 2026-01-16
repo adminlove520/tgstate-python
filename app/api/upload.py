@@ -61,8 +61,13 @@ async def upload_file(
     # 这里的 file_id 实际上是 short_id
     file_path = f"/d/{file_id}"
     
-    # 始终返回相对路径，前端负责拼接 origin
-    full_url = file_path
+    # PicGo 需要绝对路径
+    base_url = (app_settings.get("BASE_URL") or "").rstrip("/")
+    if base_url:
+        full_url = f"{base_url}{file_path}"
+    else:
+        # Fallback if no BASE_URL set (though config usually defaults)
+        full_url = file_path
 
     logger.info("上传成功: %s -> %s", file.filename, file_id)
     return {
