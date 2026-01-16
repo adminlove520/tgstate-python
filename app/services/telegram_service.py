@@ -57,7 +57,7 @@ class TelegramService:
             logger.error("上传分块 %s 到 Telegram 时出错: %s", chunk_name, e)
         return None
 
-    async def _upload_as_chunks(self, file_path: str, original_filename: str) -> str | None:
+    async def _upload_as_chunks(self, file_path: str, original_filename: str) -> Optional[str]:
         """
         将大文件分割成块，并通过回复链将所有部分聚合起来。
         """
@@ -129,7 +129,7 @@ class TelegramService:
         
         return None
 
-    async def upload_file(self, file_path: str, file_name: str) -> str | None:
+    async def upload_file(self, file_path: str, file_name: str) -> Optional[str]:
         """
         将文件上传到指定的 Telegram 频道。
         如果文件大小大于等于 CHUNK_SIZE_BYTES (约 19.5MB)，则使用分块 + manifest 机制上传。

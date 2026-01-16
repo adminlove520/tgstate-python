@@ -136,7 +136,7 @@ def get_all_files() -> list[dict]:
         finally:
             conn.close()
 
-def get_file_by_id(identifier: str) -> dict | None:
+def get_file_by_id(identifier: str) -> Optional[dict]:
     """通过 file_id 或 short_id 从数据库中获取单个文件元数据。"""
     with db_lock:
         conn = get_db_connection()
