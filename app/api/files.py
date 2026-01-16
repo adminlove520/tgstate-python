@@ -142,7 +142,7 @@ async def serve_file(
 
     file_size = await get_remote_file_size()
 
-    if range_header and file_size:
+    if range_header and file_size and request.method != "HEAD":
         # Parse Range: bytes=0-1024
         try:
             unit, ranges = range_header.split("=")
@@ -182,6 +182,9 @@ async def serve_file(
     if file_size:
         common_headers["Content-Length"] = str(file_size)
 
+    if request.method == "HEAD":
+        return Response(status_code=200, headers=common_headers)
+
     async def single_file_streamer():
         async with client.stream("GET", download_url) as resp:
             resp.raise_for_status()
@@ -191,7 +194,7 @@ async def serve_file(
     return StreamingResponse(single_file_streamer(), headers=common_headers)
 
 
-@router.get("/d/{file_id}/{filename}")
+@router.api_route("/d/{file_id}/{filename}", methods=["GET", "HEAD"])
 async def download_file_legacy(
     file_id: str,
     filename: str,
@@ -211,7 +214,7 @@ async def download_file_legacy(
     return await serve_file(file_id, filename, telegram_service, client, request, force_download)
 
 
-@router.get("/d/{identifier}")
+@router.api_route("/d/{identifier}", methods=["GET", "HEAD"])
 async def download_file_short(
     identifier: str,
     request: Request,
