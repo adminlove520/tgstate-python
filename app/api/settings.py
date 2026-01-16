@@ -80,7 +80,7 @@ def _merge_config(existing: dict, incoming: dict) -> dict:
 
 
 @router.post("/api/app-config/save")
-async def save_config_only(payload: AppConfigRequest, request: Request):
+async def save_config_only(payload: SettingsUpdate, request: Request):
     existing = database.get_app_settings_from_db()
     incoming = payload.model_dump()
     merged = _merge_config(existing, incoming)
@@ -93,7 +93,7 @@ async def save_config_only(payload: AppConfigRequest, request: Request):
 
 
 @router.post("/api/app-config/apply")
-async def save_and_apply(payload: AppConfigRequest, request: Request):
+async def save_and_apply(payload: SettingsUpdate, request: Request):
     existing = database.get_app_settings_from_db()
     incoming = payload.model_dump()
     merged = _merge_config(existing, incoming)
