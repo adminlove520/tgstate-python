@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from typing import Optional
 
 from .common import http_error
 from .. import database
@@ -22,12 +23,12 @@ class PasswordRequest(BaseModel):
     password: str
 
 
-class AppConfigRequest(BaseModel):
-    BOT_TOKEN: str | None = None
-    CHANNEL_NAME: str | None = None
-    PASS_WORD: str | None = None
-    BASE_URL: str | None = None
-    PICGO_API_KEY: str | None = None
+class SettingsUpdate(BaseModel):
+    BOT_TOKEN: Optional[str] = None
+    CHANNEL_NAME: Optional[str] = None
+    PASS_WORD: Optional[str] = None
+    BASE_URL: Optional[str] = None
+    PICGO_API_KEY: Optional[str] = None
 
 
 def _validate_config(cfg: dict) -> None:
@@ -152,8 +153,8 @@ async def set_password(payload: PasswordRequest, request: Request):
 
 
 class VerifyRequest(BaseModel):
-    BOT_TOKEN: str | None = None
-    CHANNEL_NAME: str | None = None
+    BOT_TOKEN: Optional[str] = None
+    CHANNEL_NAME: Optional[str] = None
 
 
 @router.post("/api/verify/bot")

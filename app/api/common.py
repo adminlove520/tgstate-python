@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import logging
-from fastapi import HTTPException, Request
-from typing import Any
+from fastapi import Request, HTTPException, status
+from typing import Any, Optional
 
 from ..core.config import get_active_password
 
 logger = logging.getLogger(__name__)
 
 
-def error_payload(message: str, *, code: str = "error", details: Any | None = None) -> dict:
+def error_payload(message: str, *, code: str = "error", details: Optional[Any] = None) -> dict:
     payload = {"status": "error", "code": code, "message": message}
     if details is not None:
         payload["details"] = details
     return payload
 
 
-def http_error(status_code: int, message: str, *, code: str = "error", details: Any | None = None) -> HTTPException:
+def http_error(status_code: int, message: str, *, code: str = "error", details: Optional[Any] = None) -> HTTPException:
     return HTTPException(status_code=status_code, detail=error_payload(message, code=code, details=details))
 
 

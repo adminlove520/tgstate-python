@@ -1,4 +1,6 @@
+import logging
 import asyncio
+from typing import Optional
 
 class BroadcastEventBus:
     def __init__(self, queue_maxsize: int = 200):
@@ -44,10 +46,10 @@ def build_file_event(
     *,
     action: str,
     file_id: str,
-    filename: str | None = None,
-    filesize: int | None = None,
-    upload_date: str | None = None,
-    short_id: str | None = None,
+    filename: Optional[str] = None,
+    filesize: Optional[int] = None,
+    upload_date: Optional[str] = None,
+    short_id: Optional[str] = None,
 ) -> dict:
     return {
         "action": action,

@@ -3,6 +3,7 @@ import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import asyncio
+from typing import Optional
 
 # 导入应用所需的其他模块
 from .. import database
@@ -12,7 +13,7 @@ from ..core.config import get_app_settings
 logger = logging.getLogger(__name__)
 
 # 这个变量将持有我们全局共享的客户端实例
-http_client: httpx.AsyncClient | None = None
+http_client: Optional[httpx.AsyncClient] = None
 
 def _is_bot_ready(app_settings: dict) -> bool:
     return bool((app_settings.get("BOT_TOKEN") or "").strip() and (app_settings.get("CHANNEL_NAME") or "").strip())
